@@ -14,7 +14,7 @@ ind1 = find(double(labels_train)==2);
 ind2 = find(double(labels_train)==8);
 n1train = length(ind1);
 n2train = length(ind2);
-fprintf("There are %d 1's and %d 7's in training data\n",n1train,n2train);
+% fprintf("There are %d 1's and %d 7's in training data\n",n1train,n2train);
 train1 = imgs_train(:,:,ind1);
 train2 = imgs_train(:,:,ind2);
 %% find 1 and 7 in test data
@@ -22,7 +22,7 @@ itest1 = find(double(labels_test)==2);
 itest2 = find(double(labels_test)==8);
 n1test = length(itest1);
 n2test = length(itest2);
-fprintf("There are %d 1's and %d 7's in test data\n",n1test,n2test);
+% fprintf("There are %d 1's and %d 7's in test data\n",n1test,n2test);
 test1 = imgs_test(:,:,itest1);
 test2 = imgs_test(:,:,itest2);
 %% use PCA to reduce dimensionality of the problem to 20
@@ -74,60 +74,126 @@ gfun = @(I,w)qlossgrad(I,Xtrain,label,w,lam);
 gfun2 = @(I,w)qlossgrad2(I,Xtrain,label,w,lam);
 Hvec = @(I,w,v)Hvec0(I,Y,w,v,lam);
 %%
-bsz = 1000;
 tol = 1e-4;
-% kmax = 1e3*num_batches; % the max number of iterations
-% kmax = 10000;
+
+% bsz_list = [10 100 1000];
+fprintf('batchsize final loss    gnorm    time    accuracy \n');
+% for batchnum = 1:3
+    
+%     bsz = bsz_list(batchnum);
+    max_epochs = 100;
+    w = ones(dim^2 + dim + 1, 1);
+    %%
+%     tic;
+%     [w,f,gnorm, iter] = my_LBFGS(fun, gfun, Xtrain,label,w, bsz, max_epochs, tol);
+%     method = 'LBFGS';
 max_epochs = 100;
-w = ones(dim^2 + dim + 1, 1);
-%%
-tic;
-% [w,f,gnorm] = my_LBFGS(fun, gfun, Xtrain,label,w, bsz, kmax, tol);
-% method = 'LBFGS';
+bsz_grad_list = [10 100 1000];
+M_list = [10, 50];
+for bszg_idx = 1 : 3
+    bszg = bsz_grad_list(bszg_idx);
+    bszH = 10*bszg;
+    for M_idx = 1 : 1
+        M = M_list(M_idx);           
+        tic;    
+        [w, f, gnorm, step] = SLBFGS(fun, gfun, Xtrain, label, w, max_epochs, bszg, bszH, M);
+        method = 'SLBFGS';
+        runtime = toc;
+%         fprintf("bszg = %d, M  = %d \n", bszg, M);
+            %% apply the results to the test set
+        Ntest = n1test+n2test;
+        testlabel = ones(Ntest,1);
+        testlabel(n1test+1:Ntest) = -1;
+        I = 1:Ntest;
+        test = myquadratic(Xtest,testlabel,I,w);
 
-% [w,f,gnorm] = ADAM(fun, gfun, gfun2, Hvec, Xtrain,label,w, bsz, kmax, tol);
-% method = 'ADAM';
+        hits = find(test > 0);
+        misses = find(test < 0);
+        nhits = length(hits);
+        nmisses = length(misses);
+        fprintf('batch size = %d M = %d   %d    %d    %d    %d    %0.2f\n', bszg, M, f(end), gnorm(end), step, runtime, 100*nhits/Ntest);
 
-% [w,f,gnorm] = NGD(fun, gfun, Hvec, Xtrain,label,w, bsz, kmax, tol);
-% method = 'NGD';
+           % plot the objective function
+    fig = figure;
+    plot(f,'Linewidth',2);
+    xlabel('iter','fontsize',fsz);
+    ylabel('f','fontsize',fsz);
+    xlim([0, size(f,2)]);
+    set(gca,'fontsize',fsz,'Yscale','log');
+%     fname = sprintf('%s_f_bsz%d_strategy_%d.png', method, bsz, step_strategy);
+    fname = sprintf('%s_f_bsz%d_M%d.png', method, bszg, M);
+    saveas(fig, fname);
 
-[w,f,gnorm, iter] = SGD(fun, gfun, Hvec, Xtrain,label,w, bsz, max_epochs, tol);
-runtime = toc;
-method = 'SGD';
+    % plot the norm of the gradient
+    fig = figure;
+    plot(gnorm,'Linewidth',2);
+    xlabel('iter','fontsize',fsz);
+    ylabel('||g||','fontsize',fsz);
+    xlim([0, size(gnorm,2)]);
+    set(gca,'fontsize',fsz,'Yscale','log');
+%     fname = sprintf('%s_fgrad_bsz%d_strategy_%d.png', method, bsz, step_strategy);
+    fname = sprintf('%s_fgrad_bsz%d_M%d.png', method, bszg, M);
 
-% plot the objective function
-fig = figure;
-plot(f,'Linewidth',2);
-xlabel('iter','fontsize',fsz);
-ylabel('f','fontsize',fsz);
-xlim([0, size(f,2)]);
-set(gca,'fontsize',fsz,'Yscale','log');
-fname = sprintf('fval_%s_bsz%d.png', method, bsz);
+saveas(fig, fname);  
+        end
+end
+
+            
+    
+    
+%     [w,f,gnorm, iter] = ADAM(fun, gfun, gfun2, Hvec, Xtrain,label,w, bsz, max_epochs, tol);
+%     method = 'ADAM';
+
+%     [w,f,gnorm, iter] = NGD(fun, gfun, Hvec, Xtrain,label,w, bsz, max_epochs, tol);
+%     method = 'NGD';
+
+%     step_strategy = 2;
+    
+%     [w,f,gnorm, stepsize] = SGD(fun, gfun, Hvec, Xtrain,label,w, bsz, max_epochs, tol, step_strategy);
+    runtime = toc;
+%     method = 'SGD';
+
+    % plot the objective function
+    fig = figure;
+    plot(f,'Linewidth',2);
+    xlabel('iter','fontsize',fsz);
+    ylabel('f','fontsize',fsz);
+    xlim([0, size(f,2)]);
+    set(gca,'fontsize',fsz,'Yscale','log');
+%     fname = sprintf('%s_f_bsz%d_strategy_%d.png', method, bsz, step_strategy);
+    fname = sprintf('%s_f_bsz%d.png', method, bsz);
+    saveas(fig, fname);
+
+    % plot the norm of the gradient
+    fig = figure;
+    plot(gnorm,'Linewidth',2);
+    xlabel('iter','fontsize',fsz);
+    ylabel('||g||','fontsize',fsz);
+    xlim([0, size(gnorm,2)]);
+    set(gca,'fontsize',fsz,'Yscale','log');
+%     fname = sprintf('%s_fgrad_bsz%d_strategy_%d.png', method, bsz, step_strategy);
+    fname = sprintf('%s_fgrad_bsz%d.png', method, bsz);
+
 saveas(fig, fname);
+    %% apply the results to the test set
+    Ntest = n1test+n2test;
+    testlabel = ones(Ntest,1);
+    testlabel(n1test+1:Ntest) = -1;
+    I = 1:Ntest;
+    test = myquadratic(Xtest,testlabel,I,w);
 
-% plot the norm of the gradient
-fig = figure;
-plot(gnorm,'Linewidth',2);
-xlabel('iter','fontsize',fsz);
-ylabel('||g||','fontsize',fsz);
-xlim([0, size(gnorm,2)]);
-set(gca,'fontsize',fsz,'Yscale','log');
-fname = sprintf('gnorm_%s_bsz%d.png', method, bsz);
-saveas(fig, fname);
-%% apply the results to the test set
-Ntest = n1test+n2test;
-testlabel = ones(Ntest,1);
-testlabel(n1test+1:Ntest) = -1;
-I = 1:Ntest;
-test = myquadratic(Xtest,testlabel,I,w);
+    hits = find(test > 0);
+    misses = find(test < 0);
+    nhits = length(hits);
+    nmisses = length(misses);
+    % fprintf('n_correct = %d, n_wrong = %d, accuracy %d percent\n',nhits,nmisses,nhits/Ntest);
+%     fprintf('batch size = %d, step_strategy = %d  \n', bsz, step_strategy);
+%     fprintf('batch size = %d \n', bsz);
+%     fprintf('final_loss = %d, gnorm = %d, time %d, accuracy %d\n', f(end), gnorm(end), runtime, nhits/Ntest);
+%     fprintf('final loss    gnorm    time    accuracy');
+    fprintf('batch size = %d    %d    %d    %d    %0.2f\n', bsz, f(end), gnorm(end), runtime, 100*nhits/Ntest);
 
-hits = find(test > 0);
-misses = find(test < 0);
-nhits = length(hits);
-nmisses = length(misses);
-fprintf('n_correct = %d, n_wrong = %d, accuracy %d percent\n',nhits,nmisses,nhits/Ntest);
-fprintf('final_loss = %d, gnorm = %d, iterations %d, time %d, accruacy %d\n', f(end), gnorm(end), iter, runtime, nhits/Ntest);
-
+% end
 end
 %%
 %%

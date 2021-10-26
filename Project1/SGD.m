@@ -1,14 +1,22 @@
-function [w, f, normgrad, iter] = SGD(fun, gfun, Hvec, X, y, w, bsz, max_epochs, tol)
+function [w, f, normgrad, stepsize] = SGD(fun, gfun, Hvec, X, y, w, bsz, max_epochs, tol, step_strategy)
     
-    % Separate data into: inputs, targets
-    [N, dim] = size(X);
-    num_batches = ceil(N/bsz);
-    update_freq = ceil(num_batches/5);     % update 5 times per epoch
-    iter = 1;
-    f = [];
-    normgrad = [];
+   
+    
+    %% Stepsize Strategy
+    beta = 0.5;
+    alpha = 0;
+    
+    if step_strategy == 1
+        stepsize_func = @(i) beta/(alpha + i);
+    elseif step_strategy == 2
+        stepsize_func = @(i) beta/(alpha + 2^(i-1));
+    end
+    
+    %%
     for i = 1 : max_epochs
+        stepsize = stepsize_func(i);
         for j = 1 : num_batches
+%             stepsize = stepsize_func(iter);
             Ig = randperm(N, bsz);      % random index selection
             
             % Apply model to inputs, get  model outputs
@@ -20,9 +28,6 @@ function [w, f, normgrad, iter] = SGD(fun, gfun, Hvec, X, y, w, bsz, max_epochs,
                 f(end + 1) = fun(Ig, w);
                 normgrad(end + 1) = norm(b);      % norm of gradient
             end
-            
-            % Update optimizer
-            stepsize = 0.1;
             w = w - stepsize*b;
             iter = iter + 1;    % track total number of parameter updates
         end

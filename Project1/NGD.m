@@ -1,33 +1,39 @@
-function [w, f, normgrad] = NGD(fun, gfun, Hvec, X, y, w, bsz, kmax, tol)
-    % Separate data into: inputs, targets
+function [w, f, normgrad, iter] = NGD(fun, gfun, Hvec, X, y, w, bsz, max_epochs, tol)
+    
     [N, dim] = size(X);
-    f = zeros(kmax + 1, 1); % f(i) is loss at step (i)
-    normgrad = zeros(kmax, 1);
+    num_batches = ceil(N/bsz);
+    update_freq = ceil(num_batches/5);     % update 5 times per epoch
+    iter = 1;
+    f = [];
+    normgrad = [];
+    
     
     %%% For Nesterov
-    x = w;                  % intial `position' in Nesterov steps
     lambda = 0;
     %%%
-    for k = 1 : kmax
+    for i = 1 : max_epochs
+        for j = 1 : num_batches
         Ig = randperm(N, bsz);      % random index selection
         
         % Apply model to inputs, get  model outputs
         % Apply loss function to model outputs and inputs
         % Find the new step direction for optimizer
-        b = gfun(Ig, x);            % gradient of batch
-        normgrad(k) = norm(b);      % norm of gradient
-        f(k) = fun(Ig, x);
+        b = gfun(Ig, w);            % gradient of batch
+        if (mod(j, update_freq) == 0)
+            f(end + 1) = fun(Ig, w);
+            normgrad(end + 1) = norm(b);      % norm of gradient
+        end
         
         % Update optimizer
-        stepsize = 0.001;           % step for gradient
-        wnew = x - stepsize*b;
+        stepsize = 0.1;           % step for gradient
+        wnew = w - stepsize*b;
         lambda_new = 0.5*(1 + sqrt(1 + 4*lambda^2));
         gamma = (1 - lambda)/lambda_new;
         lambda = lambda_new;
-        x = (1 - gamma)*wnew + gamma*w;
+        w = (1 - gamma)*wnew + gamma*w;
         w = wnew;
-        if normgrad(k) < tol
-            break;
-        end
+
+        iter = iter + 1;
+       
     end    
 end
